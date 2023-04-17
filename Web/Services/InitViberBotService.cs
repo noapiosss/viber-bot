@@ -2,39 +2,31 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
-using Viber.Bot.NetCore.Infrastructure;
-using Viber.Bot.NetCore.Models;
-using Viber.Bot.NetCore.RestApi;
+using Viber.Bot;
 using Web.Configurations;
 
 namespace Web.Services
 {
-    public class InitViberBotService : IHostedService
+    public class InitViberBotService : BackgroundService
     {
-        private readonly IViberBotApi _viberBotApi;
+        private readonly IViberBotClient _viberBotClient;
         private readonly IOptionsMonitor<BotConfiguration> _botConfiguration;
 
-        public InitViberBotService(IViberBotApi viberBotApi, IOptionsMonitor<BotConfiguration> botConifguration)
+        public InitViberBotService(IViberBotClient viberBotClient, IOptionsMonitor<BotConfiguration> botConifguration)
         {
-            _viberBotApi = viberBotApi;
+            _viberBotClient = viberBotClient;
             _botConfiguration = botConifguration;
         }
 
-        public Task StartAsync(CancellationToken cancellationToken)
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            //Refit.ApiResponse<ViberWebHook.ViberWebHookResponse> response = await _viberBotApi.SetWebHookAsync(new ViberWebHook.WebHookRequest("https://591f-176-119-235-147.ngrok-free.app/bot"));
-            return _viberBotApi.SetWebHookAsync(new ViberWebHook.WebHookRequest()
-            {
-                Url = $"{_botConfiguration.CurrentValue.Webhook}/bot",
-                EventTypes = new() { ViberEventType.Message, ViberEventType.Subscribed },
-                SendName = false,
-                SendPhoto = false
-            });
+            await Task.Delay(1000, stoppingToken);
+            _ = await _viberBotClient.SetWebhookAsync($"{_botConfiguration.CurrentValue.Webhook}/bot");
         }
 
-        public Task StopAsync(CancellationToken cancellationToken)
+        public override Task StopAsync(CancellationToken cancellationToken)
         {
-            return _viberBotApi.SetWebHookAsync(new ViberWebHook.WebHookRequest(""));
+            return _viberBotClient.SetWebhookAsync("");
         }
     }
 }

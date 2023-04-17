@@ -7,35 +7,32 @@ using System.Threading.Tasks;
 using Contracts.Models;
 using Domain.Queries;
 using MediatR;
-using Viber.Bot.NetCore.Infrastructure;
-using Viber.Bot.NetCore.Models;
-using Viber.Bot.NetCore.RestApi;
+using Viber.Bot;
 using Web.Services.Interfaces;
 using Web.Services.Models;
-using static Viber.Bot.NetCore.Models.ViberMessage;
 
 namespace Web.Services
 {
     public class ViberService : IViberService
     {
-        private readonly IViberBotApi _viberBotApi;
+        private readonly IViberBotClient _viberBotClient;
         private readonly IMediator _mediator;
         private readonly IUsersInfo _usersInfo;
 
-        public ViberService(IViberBotApi viberBotApi, IMediator mediator, IUsersInfo usersNavigation)
+        public ViberService(IViberBotClient viberBotClient, IMediator mediator, IUsersInfo usersNavigation)
         {
-            _viberBotApi = viberBotApi;
+            _viberBotClient = viberBotClient;
             _mediator = mediator;
             _usersInfo = usersNavigation;
         }
 
-        public async Task HandleMessage(ViberCallbackData update, CancellationToken cancellationToken = default)
+        public async Task HandleMessage(CallbackData update, CancellationToken cancellationToken = default)
         {
-            if (update.Event is ViberEventType.Subscribed)
+            if (update.Event is EventType.Subscribed)
             {
                 if (_usersInfo.UserInAnyStage(update.User.Id))
                 {
-                    _ = await _viberBotApi.SendMessageAsync<ViberResponse.SendMessageResponse>(CreateSubscriptionMessage(update, "Wellcome back!"));
+                    _ = await _viberBotClient.SendTextMessageAsync(CreateSubscriptionMessage(update, "Wellcome back!"));
                     _usersInfo.SetStage(update.User.Id, Stage.MainMenu);
                 }
                 else
@@ -43,7 +40,7 @@ namespace Web.Services
                     _usersInfo.SetStage(update.User.Id, Stage.Authorization);
 
                     string responseMessage = "Wellcome!\nTo start enter your IMEI";
-                    _ = await _viberBotApi.SendMessageAsync<ViberResponse.SendMessageResponse>(CreateSubscriptionMessage(update, responseMessage));
+                    _ = await _viberBotClient.SendTextMessageAsync(CreateSubscriptionMessage(update, responseMessage));
                     return;
                 }
             }
@@ -53,15 +50,15 @@ namespace Web.Services
                 _usersInfo.SetStage(update.Sender.Id, Stage.Authorization);
 
                 string responseMessage = "Enter your IMEI";
-                _ = await _viberBotApi.SendMessageAsync<ViberResponse.SendMessageResponse>(CreateTextMessage(update, responseMessage));
+                _ = await _viberBotClient.SendTextMessageAsync(CreateTextMessage(update, responseMessage));
                 return;
             }
 
-            TextMessage message;
+            Viber.Bot.TextMessage message;
 
-            if (update.Message.Type == ViberMessageType.Text)
+            if (update.Message.Type == MessageType.Text)
             {
-                message = update.Message as TextMessage;
+                message = update.Message as Viber.Bot.TextMessage;
             }
             else
             {
@@ -73,7 +70,7 @@ namespace Web.Services
                 if (!IsImei(message.Text))
                 {
                     string responseMessage = "Invalid IMEI, try again";
-                    _ = await _viberBotApi.SendMessageAsync<ViberResponse.SendMessageResponse>(CreateTextMessage(update, responseMessage));
+                    _ = await _viberBotClient.SendTextMessageAsync(CreateTextMessage(update, responseMessage));
                     return;
                 }
                 else
@@ -100,7 +97,7 @@ namespace Web.Services
 
                     if (result == null)
                     {
-                        _ = await _viberBotApi.SendMessageAsync<ViberResponse.SendMessageResponse>(CreateKeyboardTop10WalksMessage(update, "No any walk yet"));
+                        _ = await _viberBotClient.SendKeyboardMessageAsync(CreateKeyboardTop10WalksMessage(update, "No any walk yet"));
                         return;
                     }
 
@@ -115,14 +112,14 @@ namespace Web.Services
                         ++i;
                     }
 
-                    _ = await _viberBotApi.SendMessageAsync<ViberResponse.SendMessageResponse>(CreateKeyboardTop10WalksMessage(update, sb.ToString()));
+                    _ = await _viberBotClient.SendKeyboardMessageAsync(CreateKeyboardTop10WalksMessage(update, sb.ToString()));
                     return;
                 }
 
                 if (message.Text.Equals("/changeIMEI", StringComparison.Ordinal))
                 {
                     _usersInfo.SetStage(update.Sender.Id, Stage.ChangeImei);
-                    _ = await _viberBotApi.SendMessageAsync<ViberResponse.SendMessageResponse>(CreateKeyboardChangeImeiMessage(update, "Eneter new IMEI"));
+                    _ = await _viberBotClient.SendKeyboardMessageAsync(CreateKeyboardChangeImeiMessage(update, "Eneter new IMEI"));
                     return;
                 }
             }
@@ -138,14 +135,14 @@ namespace Web.Services
 
                 if (!IsImei(message.Text))
                 {
-                    _ = await _viberBotApi.SendMessageAsync<ViberResponse.SendMessageResponse>(CreateKeyboardChangeImeiMessage(update, "Invalid IMEI"));
+                    _ = await _viberBotClient.SendKeyboardMessageAsync(CreateKeyboardChangeImeiMessage(update, "Invalid IMEI"));
                     return;
                 }
                 else
                 {
                     if (await TrySetImei(update, message.Text, cancellationToken))
                     {
-                        _ = await _viberBotApi.SendMessageAsync<ViberResponse.SendMessageResponse>(CreateKeyboardChangeImeiMessage(update, "IMEI was successfully changed"));
+                        _ = await _viberBotClient.SendKeyboardMessageAsync(CreateKeyboardChangeImeiMessage(update, "IMEI was successfully changed"));
                         return;
                     }
                 }
@@ -165,12 +162,12 @@ namespace Web.Services
         }
 
 
-        private static TextMessage CreateTextMessage(ViberCallbackData update, string text)
+        private static Viber.Bot.TextMessage CreateTextMessage(CallbackData update, string text)
         {
             return new()
             {
-                Receiver = update.Sender == null ? update.User.Id : update.Sender.Id,
-                Sender = new ViberUser.User()
+                Receiver = update.Sender.Id,
+                Sender = new UserBase()
                 {
                     Name = "walktrackerbot",
                     Avatar = "http://dl-media.viber.com/1/share/2/long/bots/generic-avatar%402x.png"
@@ -179,12 +176,12 @@ namespace Web.Services
             };
         }
 
-        private static TextMessage CreateSubscriptionMessage(ViberCallbackData update, string text)
+        private static Viber.Bot.TextMessage CreateSubscriptionMessage(CallbackData update, string text)
         {
             return new()
             {
                 Receiver = update.User.Id,
-                Sender = new ViberUser.User()
+                Sender = new UserBase()
                 {
                     Name = "walktrackerbot",
                     Avatar = "http://dl-media.viber.com/1/share/2/long/bots/generic-avatar%402x.png"
@@ -193,34 +190,34 @@ namespace Web.Services
             };
         }
 
-        private static KeyboardMessage CreateKeyboardMainMenuMessage(ViberCallbackData update, string text)
+        private static Viber.Bot.KeyboardMessage CreateKeyboardMainMenuMessage(CallbackData update, string text)
         {
-            ViberKeyboardButton getTop10Button = new()
+            KeyboardButton getTop10Button = new()
             {
                 Text = "Top 10 walks",
-                ActionType = "reply",
+                ActionType = KeyboardActionType.Reply,
                 ActionBody = "/top10walks",
                 Columns = 3
             };
 
-            ViberKeyboardButton changeImeiButton = new()
+            KeyboardButton changeImeiButton = new()
             {
                 Text = "Change IMEI",
-                ActionType = "reply",
+                ActionType = KeyboardActionType.Reply,
                 ActionBody = "/changeIMEI",
                 Columns = 3
             };
 
-            ViberKeyboard keyboard = new()
+            Keyboard keyboard = new()
             {
-                Buttons = new List<ViberKeyboardButton>() { getTop10Button, changeImeiButton },
+                Buttons = new List<KeyboardButton>() { getTop10Button, changeImeiButton },
                 ButtonsGroupColumns = 6
             };
 
             return new()
             {
                 Receiver = update.Sender.Id,
-                Sender = new ViberUser.User()
+                Sender = new UserBase()
                 {
                     Name = "walktrackerbot",
                     Avatar = "http://dl-media.viber.com/1/share/2/long/bots/generic-avatar%402x.png"
@@ -230,24 +227,24 @@ namespace Web.Services
             };
         }
 
-        private static KeyboardMessage CreateKeyboardTop10WalksMessage(ViberCallbackData update, string text)
+        private static Viber.Bot.KeyboardMessage CreateKeyboardTop10WalksMessage(CallbackData update, string text)
         {
-            ViberKeyboardButton backButton = new()
+            KeyboardButton backButton = new()
             {
                 Text = "Back",
-                ActionType = "reply",
+                ActionType = KeyboardActionType.Reply,
                 ActionBody = "/main_menu"
             };
 
-            ViberKeyboard keyboard = new()
+            Keyboard keyboard = new()
             {
-                Buttons = new List<ViberKeyboardButton>() { backButton }
+                Buttons = new List<KeyboardButton>() { backButton }
             };
 
             return new()
             {
                 Receiver = update.Sender.Id,
-                Sender = new ViberUser.User()
+                Sender = new UserBase()
                 {
                     Name = "walktrackerbot",
                     Avatar = "http://dl-media.viber.com/1/share/2/long/bots/generic-avatar%402x.png"
@@ -257,24 +254,24 @@ namespace Web.Services
             };
         }
 
-        private static KeyboardMessage CreateKeyboardChangeImeiMessage(ViberCallbackData update, string text)
+        private static Viber.Bot.KeyboardMessage CreateKeyboardChangeImeiMessage(CallbackData update, string text)
         {
-            ViberKeyboardButton backButton = new()
+            KeyboardButton backButton = new()
             {
                 Text = "Back",
-                ActionType = "reply",
+                ActionType = KeyboardActionType.Reply,
                 ActionBody = "/main_menu"
             };
 
-            ViberKeyboard keyboard = new()
+            Keyboard keyboard = new()
             {
-                Buttons = new List<ViberKeyboardButton>() { backButton }
+                Buttons = new List<KeyboardButton>() { backButton }
             };
 
             return new()
             {
                 Receiver = update.Sender.Id,
-                Sender = new ViberUser.User()
+                Sender = new UserBase()
                 {
                     Name = "walktrackerbot",
                     Avatar = "http://dl-media.viber.com/1/share/2/long/bots/generic-avatar%402x.png"
@@ -284,7 +281,7 @@ namespace Web.Services
             };
         }
 
-        private async Task<bool> TryAddImei(ViberCallbackData update, string imei, CancellationToken cancellationToken)
+        private async Task<bool> TryAddImei(CallbackData update, string imei, CancellationToken cancellationToken)
         {
             ImeiExistsQuery imeiExistsQuery = new() { Imei = imei };
             ImeiExistsQueryResult imeiExistsQueryResult = await _mediator.Send(imeiExistsQuery, cancellationToken);
@@ -293,14 +290,14 @@ namespace Web.Services
             if (!imeiExistsQueryResult.EmeiExists)
             {
                 responseMessage = "There is no such IMEI";
-                _ = await _viberBotApi.SendMessageAsync<ViberResponse.SendMessageResponse>(CreateTextMessage(update, responseMessage));
+                _ = await _viberBotClient.SendTextMessageAsync(CreateTextMessage(update, responseMessage));
                 return false;
             }
 
             return _usersInfo.TryAddImei(update.Sender.Id, imei);
         }
 
-        private async Task<bool> TrySetImei(ViberCallbackData update, string imei, CancellationToken cancellationToken)
+        private async Task<bool> TrySetImei(CallbackData update, string imei, CancellationToken cancellationToken)
         {
             ImeiExistsQuery imeiExistsQuery = new() { Imei = imei };
             ImeiExistsQueryResult imeiExistsQueryResult = await _mediator.Send(imeiExistsQuery, cancellationToken);
@@ -309,7 +306,7 @@ namespace Web.Services
             if (!imeiExistsQueryResult.EmeiExists)
             {
                 responseMessage = "There is no such IMEI";
-                _ = await _viberBotApi.SendMessageAsync<ViberResponse.SendMessageResponse>(CreateKeyboardChangeImeiMessage(update, responseMessage));
+                _ = await _viberBotClient.SendKeyboardMessageAsync(CreateKeyboardChangeImeiMessage(update, responseMessage));
                 return false;
             }
 
@@ -317,7 +314,7 @@ namespace Web.Services
             return true;
         }
 
-        private async Task ShowMainMenu(ViberCallbackData update, CancellationToken cancellationToken)
+        private async Task ShowMainMenu(CallbackData update, CancellationToken cancellationToken)
         {
             _ = _usersInfo.TryGetImei(update.Sender.Id, out string imei);
             GetWalksByImeiQuery getWalksByImeiQuery = new() { Imei = imei };
@@ -325,7 +322,7 @@ namespace Web.Services
 
             if (getWalksByImeiQueryResult == null)
             {
-                _ = await _viberBotApi.SendMessageAsync<ViberResponse.SendMessageResponse>(CreateTextMessage(update, "No any walk yet"));
+                _ = await _viberBotClient.SendTextMessageAsync(CreateTextMessage(update, "No any walk yet"));
                 return;
             }
 
@@ -340,7 +337,7 @@ namespace Web.Services
             string responseMessage = $"Walks count: {getWalksByImeiQueryResult.Walks.Count}\n" +
                 $"Total distanse: {Math.Round(totalDistance, 2)} kilometers\n" +
                 $"Total duration: {Math.Round(totalDuration, 2)} minutes";
-            _ = await _viberBotApi.SendMessageAsync<ViberResponse.SendMessageResponse>(CreateKeyboardMainMenuMessage(update, responseMessage));
+            _ = await _viberBotClient.SendKeyboardMessageAsync(CreateKeyboardMainMenuMessage(update, responseMessage));
         }
 
         private static bool IsImei(string imei)

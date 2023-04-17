@@ -6,10 +6,9 @@ using Domain;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
-using Viber.Bot.NetCore.Middleware;
 using Web.Services.Interfaces;
 using Web.Services;
-using Viber.Bot.NetCore.Infrastructure;
+using Viber.Bot;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -33,16 +32,11 @@ builder.Services.AddDomainServices((sp, options) =>
 });
 
 builder.Services.AddHttpClient("viberclient")
-    .AddTypedClient((client, sp) =>
+    .AddTypedClient<IViberBotClient>((client, sp) =>
     {
         IOptionsMonitor<BotConfiguration> configuration = sp.GetRequiredService<IOptionsMonitor<BotConfiguration>>();
-        ViberBotConfiguration botConf = new()
-        {
-            Token = configuration.CurrentValue.Token,
-            Webhook = $"{configuration.CurrentValue.Webhook}"
-        };
 
-        return ViberClient.RegisterViberApi(botConf);
+        return new ViberBotClient(configuration.CurrentValue.Token);
     });
 
 builder.Services.AddTransient<IViberService, ViberService>();
